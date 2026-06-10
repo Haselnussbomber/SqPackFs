@@ -36,9 +36,9 @@ public partial class PathList : IDisposable, INotifyPropertyChanged
     public static string PathListCachePath => Path.Combine(AppDataPath, "reslogger.csv");
 
     private readonly HttpClient _httpClient;
-    private readonly Dictionary<Dat, Dictionary<ulong, SqFile>> _files = [];
+    private readonly Dictionary<SqDat, Dictionary<ulong, SqFile>> _files = [];
     private readonly Dictionary<string, SqFolder> _folders = [];
-    private readonly Dictionary<Dat, Dictionary<uint, string>> _folderNames = [];
+    private readonly Dictionary<SqDat, Dictionary<uint, string>> _folderNames = [];
     private readonly Lock _processLock = new();
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -107,9 +107,10 @@ public partial class PathList : IDisposable, INotifyPropertyChanged
         Clear();
     }
 
-    protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+    public void SetGameData(GameData gameData)
     {
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        _gameData = gameData;
+        Task.Run(() => LoadPathList(!File.Exists(PathListCachePath))).ConfigureAwait(false);
     }
 
     public async Task LoadPathList(bool download = false)
@@ -145,162 +146,6 @@ public partial class PathList : IDisposable, INotifyPropertyChanged
         {
             Debug.WriteLine($"Failed to process path lists: {e}");
             Status = PathListStatus.Error;
-        }
-    }
-
-    private async Task DownloadPathList()
-    {
-        Status = PathListStatus.Downloading;
-
-        var url = "https://rl2.perchbird.dev/download/export/PathListWithHashes.gz";
-
-        await using var req = await _httpClient.GetStreamAsync(url);
-        await using var gzip = new GZipStream(req, CompressionMode.Decompress);
-        using var reader = new StreamReader(gzip);
-
-        if (!Directory.Exists(AppDataPath))
-            Directory.CreateDirectory(AppDataPath);
-
-        if (File.Exists(PathListCachePath))
-            File.Delete(PathListCachePath);
-
-        var i = 0;
-        await using var writer = new StreamWriter(PathListCachePath);
-        reader.ReadLine(); // skip header
-
-        while (true)
-        {
-            var line = await reader.ReadLineAsync();
-            if (line == null)
-                break;
-
-            line = line.Trim();
-
-            if (string.IsNullOrWhiteSpace(line))
-                continue;
-
-            writer.WriteLine(line);
-            i++;
-        }
-
-        Debug.WriteLine($"Downloaded {i} paths to {PathListCachePath}");
-
-        Status = PathListStatus.Downloaded;
-    }
-
-    public void SetGameData(GameData gameData)
-    {
-        _gameData = gameData;
-        Task.Run(() => LoadPathList(!File.Exists(PathListCachePath))).ConfigureAwait(false);
-    }
-
-    public void Clear()
-    {
-        _rootDirectory = new SqFolder("root", 0);
-        _files.Clear();
-        _folderNames.Clear();
-        Count = 0;
-        LoadProgress = 0;
-    }
-
-    private void LoadCachedPathList()
-    {
-        using var stream = File.OpenRead(PathListCachePath);
-        using var reader = new StreamReader(stream);
-
-        Count = 0;
-        var totalBytes = stream.Length;
-        var linesRead = 0;
-        var totalLines = 0u;
-
-        while (!reader.EndOfStream)
-        {
-            var line = reader.ReadLine()!.Trim();
-            if (string.IsNullOrWhiteSpace(line))
-                continue;
-            totalLines++;
-        }
-
-        TotalCount = totalLines;
-
-        reader.BaseStream.Seek(0, SeekOrigin.Begin);
-
-        while (!reader.EndOfStream)
-        {
-            var line = reader.ReadLine()!.Trim();
-            if (string.IsNullOrWhiteSpace(line))
-                continue;
-
-            var firstComma = line.IndexOf(',');
-            var lastComma = line.LastIndexOf(',');
-            var indexId = int.Parse(line[..firstComma]);
-            var path = line[(lastComma + 1)..];
-
-            var category = new Category((byte)(indexId >> 16), (byte)((indexId >> 8) & 0xFF));
-            var dat = new Dat(category, (byte)(indexId & 0xFF));
-            var file = new SqFile(path, dat);
-            var folder = GetFolder(file.FolderName!, true)!;
-
-            if (!_folderNames.TryGetValue(dat, out var names))
-                _folderNames[dat] = names = [];
-
-            names.TryAdd(file.FolderHash, file.FolderName!);
-
-            folder.Files[file.FileHash] = file;
-
-            if (!_files.TryGetValue(file.Dat!, out var files))
-                _files[file.Dat!] = files = [];
-
-            files[file.Hash] = file;
-            Count++;
-
-            linesRead++;
-            if (linesRead % 10000 == 0 && totalBytes > 0)
-            {
-                LoadProgress = (double)stream.Position / totalBytes;
-            }
-        }
-
-        LoadProgress = 1.0;
-    }
-
-    private void LoadGameFiles()
-    {
-        foreach (var repo in _gameData!.Repositories.Values)
-        {
-            foreach (var cat in repo.Categories.Values.SelectMany(c => c))
-            {
-                if (cat.IndexHashTableEntries is null) continue;
-
-                var category = new Category(cat.CategoryId, (byte)cat.Expansion);
-                var dats = new Dictionary<byte, Dat>();
-
-                foreach (var (hash, data) in cat.IndexHashTableEntries)
-                {
-                    if (!dats.TryGetValue(data.DataFileId, out var dat))
-                        dats[data.DataFileId] = dat = new Dat(category, data.DataFileId);
-
-                    var file = new SqFile(dat, hash);
-
-                    if (!_files.TryGetValue(file.Dat!, out var files))
-                        _files[file.Dat!] = files = [];
-
-                    if (files.ContainsKey(file.Hash))
-                        continue;
-
-                    if (!ReverseRootCategories.TryGetValue(cat.CategoryId, out var rootCategory))
-                        continue;
-
-                    var folderName =
-                        _folderNames.TryGetValue(dat, out var names) && names.TryGetValue(file.FolderHash, out var newName)
-                        ? newName
-                        : rootCategory + "/" + (HasSubfolder.Contains(rootCategory) ? cat.Expansion == 0 ? "ffxiv/" : "ex" + cat.Expansion + "/" : "") + Utils.PrintFileHash(file.FolderHash);
-
-                    var folder = GetFolder(folderName, true)!;
-                    folder.Files[file.FileHash] = file;
-                    files[file.Hash] = file;
-                }
-            }
         }
     }
 
@@ -360,9 +205,6 @@ public partial class PathList : IDisposable, INotifyPropertyChanged
         if (file.Path != null)
             return _gameData.GetFile<T>(file.Path);
 
-        if (file.Dat == null)
-            return null;
-
         foreach (var repo in _gameData.Repositories.Values)
         {
             foreach (var cat in repo.Categories.Values.SelectMany(c => c))
@@ -380,26 +222,181 @@ public partial class PathList : IDisposable, INotifyPropertyChanged
         return null;
     }
 
-    public record Category(byte Id, byte Expansion);
-    public record Dat(Category Category, byte Index);
-
-    public record SqFolder(string Name, uint FolderHash)
+    protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
     {
-        public Dictionary<uint, SqFolder> Folders = [];
-        public Dictionary<uint, SqFile> Files = [];
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 
-    public record SqFile(Dat? Dat, ulong Hash, string? FolderName = null, string? FileName = null)
+    private void Clear()
     {
-        public string? Path => FolderName != null && FileName != null ? (FolderName + "/" + FileName) : null;
-        public uint FolderHash = (uint)(Hash >> 32);
-        public uint FileHash = (uint)Hash;
+        _rootDirectory = new SqFolder("root", 0);
+        _files.Clear();
+        _folderNames.Clear();
+        Count = 0;
+        LoadProgress = 0;
+    }
 
-        public SqFile(string path, Dat? dat = null) : this(dat, Utils.GetFullHash(path))
+    private async Task DownloadPathList()
+    {
+        Status = PathListStatus.Downloading;
+
+        var url = "https://rl2.perchbird.dev/download/export/PathListWithHashes.gz";
+
+        await using var req = await _httpClient.GetStreamAsync(url);
+        await using var gzip = new GZipStream(req, CompressionMode.Decompress);
+        using var reader = new StreamReader(gzip);
+
+        if (!Directory.Exists(AppDataPath))
+            Directory.CreateDirectory(AppDataPath);
+
+        if (File.Exists(PathListCachePath))
+            File.Delete(PathListCachePath);
+
+        var i = 0;
+        await using var writer = new StreamWriter(PathListCachePath);
+        reader.ReadLine(); // skip header
+
+        while (true)
         {
-            FolderName = path[..path.LastIndexOf('/')];
-            FileName = path[(path.LastIndexOf('/') + 1)..];
+            var line = await reader.ReadLineAsync();
+            if (line == null)
+                break;
+
+            line = line.Trim();
+
+            if (string.IsNullOrWhiteSpace(line))
+                continue;
+
+            writer.WriteLine(line);
+            i++;
         }
+
+        Debug.WriteLine($"Downloaded {i} paths to {PathListCachePath}");
+
+        Status = PathListStatus.Downloaded;
+    }
+
+    private void LoadCachedPathList()
+    {
+        using var stream = File.OpenRead(PathListCachePath);
+        using var reader = new StreamReader(stream);
+
+        Count = 0;
+        var totalBytes = stream.Length;
+        var linesRead = 0;
+        var totalLines = 0u;
+
+        while (!reader.EndOfStream)
+        {
+            var line = reader.ReadLine()!.Trim();
+            if (string.IsNullOrWhiteSpace(line))
+                continue;
+            totalLines++;
+        }
+
+        TotalCount = totalLines;
+
+        reader.BaseStream.Seek(0, SeekOrigin.Begin);
+
+        while (!reader.EndOfStream)
+        {
+            var line = reader.ReadLine()!.Trim();
+            if (string.IsNullOrWhiteSpace(line))
+                continue;
+
+            var firstComma = line.IndexOf(',');
+            var lastComma = line.LastIndexOf(',');
+            var indexId = int.Parse(line[..firstComma]);
+            var path = line[(lastComma + 1)..];
+
+            var category = new SqCategory((byte)(indexId >> 16), (byte)((indexId >> 8) & 0xFF));
+            var dat = new SqDat(category, (byte)(indexId & 0xFF));
+            var file = new SqFile(dat, path);
+            var folder = GetFolder(file.FolderName!, true)!;
+
+            if (!_folderNames.TryGetValue(dat, out var names))
+                _folderNames[dat] = names = [];
+
+            names.TryAdd(file.FolderHash, file.FolderName!);
+
+            folder.Files[file.FileHash] = file;
+
+            if (!_files.TryGetValue(file.Dat!, out var files))
+                _files[file.Dat!] = files = [];
+
+            files[file.Hash] = file;
+            Count++;
+
+            linesRead++;
+            if (linesRead % 10000 == 0 && totalBytes > 0)
+            {
+                LoadProgress = (double)stream.Position / totalBytes;
+            }
+        }
+
+        LoadProgress = 1.0;
+    }
+
+    private void LoadGameFiles()
+    {
+        foreach (var repo in _gameData!.Repositories.Values)
+        {
+            foreach (var cat in repo.Categories.Values.SelectMany(c => c))
+            {
+                if (cat.IndexHashTableEntries is null) continue;
+
+                var category = new SqCategory(cat.CategoryId, (byte)cat.Expansion);
+                var dats = new Dictionary<byte, SqDat>();
+
+                foreach (var (hash, data) in cat.IndexHashTableEntries)
+                {
+                    if (!dats.TryGetValue(data.DataFileId, out var dat))
+                        dats[data.DataFileId] = dat = new SqDat(category, data.DataFileId);
+
+                    var file = new SqFile(dat, hash);
+
+                    if (!_files.TryGetValue(file.Dat!, out var files))
+                        _files[file.Dat!] = files = [];
+
+                    if (files.ContainsKey(file.Hash))
+                        continue;
+
+                    if (!ReverseRootCategories.TryGetValue(cat.CategoryId, out var rootCategory))
+                        continue;
+
+                    var folderName =
+                        _folderNames.TryGetValue(dat, out var names) && names.TryGetValue(file.FolderHash, out var newName)
+                        ? newName
+                        : rootCategory + "/" + (HasSubfolder.Contains(rootCategory) ? cat.Expansion == 0 ? "ffxiv/" : "ex" + cat.Expansion + "/" : "") + Utils.PrintFileHash(file.FolderHash);
+
+                    var folder = GetFolder(folderName, true)!;
+                    folder.Files[file.FileHash] = file;
+                    files[file.Hash] = file;
+                }
+            }
+        }
+    }
+}
+
+public record struct SqCategory(byte Id, byte Expansion);
+public record struct SqDat(SqCategory Category, byte Index);
+
+public record SqFolder(string Name, uint FolderHash)
+{
+    public Dictionary<uint, SqFolder> Folders = [];
+    public Dictionary<uint, SqFile> Files = [];
+}
+
+public record SqFile(SqDat Dat, ulong Hash, string? FolderName = null, string? FileName = null)
+{
+    public string? Path => FolderName != null && FileName != null ? (FolderName + "/" + FileName) : null;
+    public uint FolderHash = (uint)(Hash >> 32);
+    public uint FileHash = (uint)Hash;
+
+    public SqFile(SqDat dat, string path) : this(dat, Utils.GetFullHash(path))
+    {
+        FolderName = path[..path.LastIndexOf('/')];
+        FileName = path[(path.LastIndexOf('/') + 1)..];
     }
 }
 
