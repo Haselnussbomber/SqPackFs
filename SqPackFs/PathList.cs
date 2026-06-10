@@ -5,9 +5,12 @@ using Lumina;
 using Lumina.Data;
 using Lumina.Misc;
 
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
+
 namespace SqPackFs;
 
-public partial class PathList : IDisposable
+public partial class PathList : IDisposable, INotifyPropertyChanged
 {
     public static readonly Dictionary<string, byte> RootCategories = new() {
         {"common", 0},
@@ -38,11 +41,61 @@ public partial class PathList : IDisposable
     private readonly Dictionary<Dat, Dictionary<uint, string>> _folderNames = [];
     private readonly Lock _processLock = new();
 
+    public event PropertyChangedEventHandler? PropertyChanged;
     private SqFolder _rootDirectory = new("root", 0);
     private GameData? _gameData;
 
-    public PathListStatus Status { get; private set; }
-    public uint Count { get; private set; }
+    public PathListStatus Status
+    {
+        get;
+        private set
+        {
+            if (field != value)
+            {
+                field = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+
+    public uint Count
+    {
+        get;
+        private set
+        {
+            if (field != value)
+            {
+                field = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+
+    public uint TotalCount
+    {
+        get;
+        private set
+        {
+            if (field != value)
+            {
+                field = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+
+    public double LoadProgress
+    {
+        get;
+        private set
+        {
+            if (field != value)
+            {
+                field = value;
+                OnPropertyChanged();
+            }
+        }
+    }
 
     public PathList()
     {
@@ -54,7 +107,48 @@ public partial class PathList : IDisposable
         Clear();
     }
 
-    public async Task DownloadPathList()
+    protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+
+    public async Task LoadPathList(bool download = false)
+    {
+        if (download)
+        {
+            await DownloadPathList();
+        }
+
+        try
+        {
+            using (_processLock.EnterScope())
+            {
+                Clear();
+                Debug.WriteLine("Processing path list");
+
+                var stopwatch = Stopwatch.StartNew();
+
+                Status = PathListStatus.Loading;
+
+                LoadCachedPathList();
+                Debug.WriteLine($"Loaded path lists: {stopwatch.Elapsed}");
+
+                LoadGameFiles();
+                Debug.WriteLine($"Sorting folders: {stopwatch.Elapsed}");
+
+                Debug.WriteLine($"Finished processing path lists in {stopwatch.Elapsed}");
+
+                Status = PathListStatus.Loaded;
+            }
+        }
+        catch (Exception e)
+        {
+            Debug.WriteLine($"Failed to process path lists: {e}");
+            Status = PathListStatus.Error;
+        }
+    }
+
+    private async Task DownloadPathList()
     {
         Status = PathListStatus.Downloading;
 
@@ -97,36 +191,7 @@ public partial class PathList : IDisposable
     public void SetGameData(GameData gameData)
     {
         _gameData = gameData;
-        Status = PathListStatus.Loading;
-
-        Task.Run(() =>
-        {
-            try
-            {
-                using (_processLock.EnterScope())
-                {
-                    Clear();
-                    Debug.WriteLine("Processing path list");
-
-                    var stopwatch = Stopwatch.StartNew();
-
-                    LoadPathList();
-                    Debug.WriteLine($"Loaded path lists: {stopwatch.Elapsed}");
-
-                    LoadGameFiles();
-                    Debug.WriteLine($"Sorting folders: {stopwatch.Elapsed}");
-
-                    Debug.WriteLine($"Finished processing path lists in {stopwatch.Elapsed}");
-
-                    Status = PathListStatus.Loaded;
-                }
-            }
-            catch (Exception e)
-            {
-                Debug.WriteLine($"Failed to process path lists: {e}");
-                Status = PathListStatus.Error;
-            }
-        });
+        Task.Run(() => LoadPathList(!File.Exists(PathListCachePath))).ConfigureAwait(false);
     }
 
     public void Clear()
@@ -134,13 +199,31 @@ public partial class PathList : IDisposable
         _rootDirectory = new SqFolder("root", 0);
         _files.Clear();
         _folderNames.Clear();
+        Count = 0;
+        LoadProgress = 0;
     }
 
-    private void LoadPathList()
+    private void LoadCachedPathList()
     {
-        using var reader = new StreamReader(PathListCachePath);
+        using var stream = File.OpenRead(PathListCachePath);
+        using var reader = new StreamReader(stream);
 
         Count = 0;
+        var totalBytes = stream.Length;
+        var linesRead = 0;
+        var totalLines = 0u;
+
+        while (!reader.EndOfStream)
+        {
+            var line = reader.ReadLine()!.Trim();
+            if (string.IsNullOrWhiteSpace(line))
+                continue;
+            totalLines++;
+        }
+
+        TotalCount = totalLines;
+
+        reader.BaseStream.Seek(0, SeekOrigin.Begin);
 
         while (!reader.EndOfStream)
         {
@@ -170,7 +253,15 @@ public partial class PathList : IDisposable
 
             files[file.Hash] = file;
             Count++;
+
+            linesRead++;
+            if (linesRead % 10000 == 0 && totalBytes > 0)
+            {
+                LoadProgress = (double)stream.Position / totalBytes;
+            }
         }
+
+        LoadProgress = 1.0;
     }
 
     private void LoadGameFiles()

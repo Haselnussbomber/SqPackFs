@@ -1,22 +1,21 @@
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using Fsp;
 using Lumina;
 
 namespace SqPackFs;
 
-public partial class FsService : IDisposable
+public partial class FsService : IDisposable, INotifyPropertyChanged
 {
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+
     private readonly FileSystemHost _host;
     private readonly SqPackFileSystem _filesystem;
-
-    public FsService()
-    {
-        _filesystem = new();
-        _host = new FileSystemHost(_filesystem)
-        {
-            Prefix = @"\ffxiv\sqpack",
-            FileSystemName = "SqPackFs",
-        };
-    }
 
     public Exception? LastException => _filesystem.LastException;
 
@@ -28,6 +27,22 @@ public partial class FsService : IDisposable
     {
         get => _filesystem.GamePath;
         set => _filesystem.GamePath = value;
+    }
+
+    public FsService()
+    {
+        _filesystem = new();
+        _filesystem.PropertyChanged += Filesystem_PropertyChanged;
+        _host = new FileSystemHost(_filesystem)
+        {
+            Prefix = @"\ffxiv\sqpack",
+            FileSystemName = "SqPackFs",
+        };
+    }
+
+    private void Filesystem_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        OnPropertyChanged(e.PropertyName);
     }
 
     public void Dispose()

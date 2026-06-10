@@ -1,18 +1,57 @@
 using Fsp;
 using Lumina;
 
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
+
 namespace SqPackFs;
 
-public partial class SqPackFileSystem : FileSystemBase, IDisposable
+public partial class SqPackFileSystem : FileSystemBase, IDisposable, INotifyPropertyChanged
 {
+    public event PropertyChangedEventHandler? PropertyChanged;
+
     public SqPackFileSystem()
     {
         GamePath = @"C:\Program Files (x86)\SquareEnix\FINAL FANTASY XIV - A Realm Reborn\game\sqpack"; // TODO: auto-detect
     }
 
-    public Exception? LastException { get; private set; }
+    public void Dispose()
+    {
+        GameData?.Dispose();
+        PathList.Dispose();
+    }
 
-    public GameData? GameData { get; private set; }
+    protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+
+    public Exception? LastException
+    {
+        get;
+        private set
+        {
+            if (field != value)
+            {
+                field = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+
+    public GameData? GameData
+    {
+        get;
+        private set
+        {
+            if (field != value)
+            {
+                field = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+
     public PathList PathList { get;} = new PathList();
 
     public string GamePath
@@ -20,7 +59,11 @@ public partial class SqPackFileSystem : FileSystemBase, IDisposable
         get;
         set
         {
+            if (field == value)
+                return;
+
             field = value;
+            OnPropertyChanged();
 
             if (string.IsNullOrWhiteSpace(value))
             {
@@ -48,10 +91,4 @@ public partial class SqPackFileSystem : FileSystemBase, IDisposable
             }
         }
     } = string.Empty;
-
-    public void Dispose()
-    {
-        GameData?.Dispose();
-        PathList.Dispose();
-    }
 }
