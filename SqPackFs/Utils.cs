@@ -22,24 +22,8 @@ public static class Utils
         return ((ulong)folder << 32) | file;
     }
 
-    public static ulong GetFullHash(uint folder, uint file)
-    {
-        return ((ulong)folder << 32) | file;
-    }
-
-    public static (uint Folder, uint File) GetHash(ulong fullHash)
-    {
-        return ((uint)(fullHash >> 32), (uint)fullHash);
-    }
-
     public static string PrintFileHash(uint hash)
     {
         return "~" + hash.ToString("X8");
-    }
-
-    public static string PrintFileHash(ulong hash)
-    {
-        var (folder, file) = GetHash(hash);
-        return $"{PrintFileHash(folder)}/{PrintFileHash(file)}";
     }
 }

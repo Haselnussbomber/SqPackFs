@@ -1,12 +1,12 @@
 using System.Collections.Frozen;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO.Compression;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Lumina;
 using Lumina.Data;
 using Lumina.Misc;
-
-using System.ComponentModel;
-using System.Runtime.CompilerServices;
 
 namespace SqPackFs;
 
@@ -36,7 +36,7 @@ public partial class PathList : IDisposable, INotifyPropertyChanged
     public static string PathListCachePath => Path.Combine(AppDataPath, "reslogger.csv");
 
     private readonly HttpClient _httpClient;
-    private readonly Dictionary<SqDat, Dictionary<ulong, SqFile>> _files = [];
+    private readonly Dictionary<SqDat, Dictionary<SqHash, SqFile>> _files = [];
     private readonly Dictionary<string, SqFolder> _folders = [];
     private readonly Dictionary<SqDat, Dictionary<uint, string>> _folderNames = [];
     private readonly Lock _processLock = new();
@@ -215,7 +215,7 @@ public partial class PathList : IDisposable, INotifyPropertyChanged
                 if (cat.CategoryId != file.Dat.Category.Id || cat.Expansion != file.Dat.Category.Expansion)
                     continue;
 
-                return cat.GetFile<T>(file.Hash);
+                return cat.GetFile<T>(file.Hash.Full);
             }
         }
 
@@ -279,52 +279,56 @@ public partial class PathList : IDisposable, INotifyPropertyChanged
     private void LoadCachedPathList()
     {
         using var stream = File.OpenRead(PathListCachePath);
-        using var reader = new StreamReader(stream);
+        using var reader = new Utf8CsvReader(stream);
 
         Count = 0;
         var totalBytes = stream.Length;
         var linesRead = 0;
         var totalLines = 0u;
 
-        while (!reader.EndOfStream)
-        {
-            var line = reader.ReadLine()!.Trim();
-            if (string.IsNullOrWhiteSpace(line))
-                continue;
+        while (reader.ReadNextRow())
             totalLines++;
-        }
 
         TotalCount = totalLines;
 
-        reader.BaseStream.Seek(0, SeekOrigin.Begin);
+        reader.Reset();
 
-        while (!reader.EndOfStream)
+        while (reader.ReadNextRow())
         {
-            var line = reader.ReadLine()!.Trim();
-            if (string.IsNullOrWhiteSpace(line))
+            var row = reader.GetRowReader();
+            // indexid,folderhash,filehash,fullhash,path
+
+            if (!row.TryRead(out uint indexId))
                 continue;
 
-            var firstComma = line.IndexOf(',');
-            var lastComma = line.LastIndexOf(',');
-            var indexId = int.Parse(line[..firstComma]);
-            var path = line[(lastComma + 1)..];
+            if (!row.Skip())
+                continue;
+
+            if (!row.Skip())
+                continue;
+
+            if (!row.TryRead(out ulong fullhash))
+                continue;
+
+            if (!row.TryRead(out var path))
+                continue;
 
             var category = new SqCategory((byte)(indexId >> 16), (byte)((indexId >> 8) & 0xFF));
             var dat = new SqDat(category, (byte)(indexId & 0xFF));
-            var file = new SqFile(dat, path);
+            var file = new SqFile(dat, fullhash, string.Intern(path));
             var folder = GetFolder(file.FolderName!, true)!;
 
             if (!_folderNames.TryGetValue(dat, out var names))
                 _folderNames[dat] = names = [];
 
-            names.TryAdd(file.FolderHash, file.FolderName!);
+            names.TryAdd(file.Hash.Folder, file.FolderName!);
 
-            folder.Files[file.FileHash] = file;
+            folder.Files[file.Hash.File] = file;
 
             if (!_files.TryGetValue(file.Dat!, out var files))
                 _files[file.Dat!] = files = [];
 
-            files[file.Hash] = file;
+            files[file.Hash.Full] = file;
             Count++;
 
             linesRead++;
@@ -334,6 +338,7 @@ public partial class PathList : IDisposable, INotifyPropertyChanged
             }
         }
 
+        GC.Collect();
         LoadProgress = 1.0;
     }
 
@@ -358,20 +363,20 @@ public partial class PathList : IDisposable, INotifyPropertyChanged
                     if (!_files.TryGetValue(file.Dat!, out var files))
                         _files[file.Dat!] = files = [];
 
-                    if (files.ContainsKey(file.Hash))
+                    if (files.ContainsKey(file.Hash.Full))
                         continue;
 
                     if (!ReverseRootCategories.TryGetValue(cat.CategoryId, out var rootCategory))
                         continue;
 
                     var folderName =
-                        _folderNames.TryGetValue(dat, out var names) && names.TryGetValue(file.FolderHash, out var newName)
+                        _folderNames.TryGetValue(dat, out var names) && names.TryGetValue(file.Hash.Folder, out var newName)
                         ? newName
-                        : rootCategory + "/" + (HasSubfolder.Contains(rootCategory) ? cat.Expansion == 0 ? "ffxiv/" : "ex" + cat.Expansion + "/" : "") + Utils.PrintFileHash(file.FolderHash);
+                        : rootCategory + "/" + (HasSubfolder.Contains(rootCategory) ? cat.Expansion == 0 ? "ffxiv/" : "ex" + cat.Expansion + "/" : "") + Utils.PrintFileHash(file.Hash.Folder);
 
                     var folder = GetFolder(folderName, true)!;
-                    folder.Files[file.FileHash] = file;
-                    files[file.Hash] = file;
+                    folder.Files[file.Hash.File] = file;
+                    files[file.Hash.Full] = file;
                 }
             }
         }
@@ -387,16 +392,81 @@ public record SqFolder(string Name, uint FolderHash)
     public Dictionary<uint, SqFile> Files = [];
 }
 
-public record SqFile(SqDat Dat, ulong Hash, string? FolderName = null, string? FileName = null)
+[StructLayout(LayoutKind.Explicit, Size = 8)]
+public struct SqHash : IEquatable<SqHash>, IComparable<SqHash>
 {
-    public string? Path => FolderName != null && FileName != null ? (FolderName + "/" + FileName) : null;
-    public uint FolderHash = (uint)(Hash >> 32);
-    public uint FileHash = (uint)Hash;
+    [FieldOffset(0x00)] public ulong Full;
+    [FieldOffset(0x00)] public uint Folder;
+    [FieldOffset(0x04)] public uint File;
+
+    public bool Equals(SqHash other)
+        => Full == other.Full;
+
+    public override bool Equals(object? obj)
+    {
+        if (obj is ulong ulongHash)
+            return Equals((SqHash)ulongHash);
+
+        if (obj is SqHash fullHash)
+            return Equals(fullHash);
+
+        return false;
+    }
+
+    public int CompareTo(SqHash other)
+        => Full.CompareTo(other.Full);
+
+    public override int GetHashCode()
+        => Full.GetHashCode();
+
+    public static bool operator ==(SqHash left, SqHash right)
+        => left.Equals(right);
+
+    public static bool operator !=(SqHash left, SqHash right)
+        => !(left == right);
+
+    public static bool operator <(SqHash left, SqHash right)
+        => left.CompareTo(right) < 0;
+
+    public static bool operator <=(SqHash left, SqHash right)
+        => left.CompareTo(right) <= 0;
+
+    public static bool operator >(SqHash left, SqHash right)
+        => left.CompareTo(right) > 0;
+
+    public static bool operator >=(SqHash left, SqHash right)
+        => left.CompareTo(right) >= 0;
+
+    public static implicit operator SqHash(ulong value)
+        => new() { Full = value };
+}
+
+public record SqFile
+{
+    public SqDat Dat { get; }
+    public SqHash Hash { get; }
+    public string? FolderName { get; }
+    public string? FileName { get; }
+    public string? Path { get; }
+
+    public SqFile(SqDat dat, SqHash hash)
+    {
+        Dat = dat;
+        Hash = hash;
+    }
+
+    public SqFile(SqDat dat, SqHash hash, string path) : this(dat, hash)
+    {
+        Path = path;
+        FolderName = string.Intern(path[..path.LastIndexOf('/')]);
+        FileName = string.Intern(path[(path.LastIndexOf('/') + 1)..]);
+    }
 
     public SqFile(SqDat dat, string path) : this(dat, Utils.GetFullHash(path))
     {
-        FolderName = path[..path.LastIndexOf('/')];
-        FileName = path[(path.LastIndexOf('/') + 1)..];
+        Path = path;
+        FolderName = string.Intern(path[..path.LastIndexOf('/')]);
+        FileName = string.Intern(path[(path.LastIndexOf('/') + 1)..]);
     }
 }
 
