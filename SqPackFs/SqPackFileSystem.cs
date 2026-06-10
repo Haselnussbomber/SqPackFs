@@ -5,14 +5,15 @@ namespace SqPackFs;
 
 public partial class SqPackFileSystem : FileSystemBase, IDisposable
 {
-    private GameData? _lumina;
-
     public SqPackFileSystem()
     {
         GamePath = @"C:\Program Files (x86)\SquareEnix\FINAL FANTASY XIV - A Realm Reborn\game\sqpack"; // TODO: auto-detect
     }
 
     public Exception? LastException { get; private set; }
+
+    public GameData? GameData { get; private set; }
+    public PathList PathList { get;} = new PathList();
 
     public string GamePath
     {
@@ -35,10 +36,11 @@ public partial class SqPackFileSystem : FileSystemBase, IDisposable
 
             try
             {
-                _lumina?.Dispose();
-                _lumina = null;
+                GameData?.Dispose();
+                GameData = null;
                 GC.Collect();
-                _lumina = new GameData(value);
+                GameData = new GameData(value);
+                PathList.SetGameData(GameData);
             }
             catch (Exception ex)
             {
@@ -49,6 +51,7 @@ public partial class SqPackFileSystem : FileSystemBase, IDisposable
 
     public void Dispose()
     {
-        _lumina?.Dispose();
+        GameData?.Dispose();
+        PathList.Dispose();
     }
 }

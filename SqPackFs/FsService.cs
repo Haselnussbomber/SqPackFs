@@ -1,4 +1,5 @@
 using Fsp;
+using Lumina;
 
 namespace SqPackFs;
 
@@ -17,13 +18,17 @@ public partial class FsService : IDisposable
         };
     }
 
+    public Exception? LastException => _filesystem.LastException;
+
+    public GameData? GameData => _filesystem.GameData;
+
+    public PathList PathList => _filesystem.PathList;
+
     public string GamePath
     {
         get => _filesystem.GamePath;
         set => _filesystem.GamePath = value;
     }
-
-    public Exception? LastException => _filesystem.LastException;
 
     public void Dispose()
     {
