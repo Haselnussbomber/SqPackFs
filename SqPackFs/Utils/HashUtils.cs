@@ -1,8 +1,8 @@
 using System.Text;
 
-namespace SqPackFs;
+namespace SqPackFs.Utils;
 
-public static class Utils
+public static class HashUtils
 {
     public static (uint Folder, uint File) GetHash(string path)
     {
@@ -20,10 +20,5 @@ public static class Utils
     {
         var (folder, file) = GetHash(path);
         return ((ulong)folder << 32) | file;
-    }
-
-    public static string PrintFileHash(uint hash)
-    {
-        return "~" + hash.ToString("X8");
     }
 }

@@ -1,10 +1,10 @@
-using System.Buffers.Text;
-
-namespace SqPackFs;
-
 using System.Buffers;
-using System.IO;
+using System.Buffers.Text;
+using System.Numerics;
+using System.Runtime.Intrinsics;
 using System.Text;
+
+namespace SqPackFs.Utils;
 
 public partial class Utf8CsvReader(Stream stream, int initialBufferSize = 32 * 1024) : Utf8DelimitedReader(stream, (byte)',', initialBufferSize);
 public partial class Utf8TsvReader(Stream stream, int initialBufferSize = 32 * 1024) : Utf8DelimitedReader(stream, (byte)'\t', initialBufferSize);
@@ -36,15 +36,6 @@ public partial class Utf8DelimitedReader(Stream stream, byte columnSeparator, in
     }
 
     private bool _isInsideQuote = false;
-
-    public void Reset()
-    {
-        stream.Seek(0, SeekOrigin.Begin);
-        _bufferOffset = 0;
-        _bufferCount = 0;
-        _isEof = false;
-    }
-
     public bool ReadNextRow()
     {
         if (_buffer == null)
@@ -55,26 +46,99 @@ public partial class Utf8DelimitedReader(Stream stream, byte columnSeparator, in
         while (true)
         {
             var searchSpan = _buffer.AsSpan(_bufferOffset, _bufferCount - _bufferOffset);
+            var i = 0;
 
-            for (var i = 0; i < searchSpan.Length; i++)
+            ref var spanRef = ref MemoryMarshal.GetReference(searchSpan);
+
+            if (Vector256.IsHardwareAccelerated && searchSpan.Length >= Vector256<byte>.Count)
+            {
+                var quoteVec = Vector256.Create((byte)'\"');
+                var newlineVec = Vector256.Create((byte)'\n');
+                var simdLimit = searchSpan.Length - Vector256<byte>.Count;
+
+                while (i <= simdLimit)
+                {
+                    var current = Vector256.LoadUnsafe(ref spanRef, (nuint)i);
+                    var matchQuote = Vector256.Equals(current, quoteVec);
+                    var matchNewline = Vector256.Equals(current, newlineVec);
+                    var combinedMatches = Vector256.BitwiseOr(matchQuote, matchNewline);
+
+                    if (combinedMatches != Vector256<byte>.Zero)
+                    {
+                        var mask = combinedMatches.ExtractMostSignificantBits();
+
+                        while (mask != 0)
+                        {
+                            var bitPos = BitOperations.TrailingZeroCount(mask);
+                            var absolutePos = i + bitPos;
+                            var hitChar = searchSpan[absolutePos];
+
+                            if (hitChar == (byte)'\"')
+                            {
+                                _isInsideQuote = !_isInsideQuote;
+                            }
+                            else if (hitChar == (byte)'\n' && !_isInsideQuote)
+                            {
+                                return FinalizeRow(startOffset, absolutePos);
+                            }
+
+                            mask &= mask - 1;
+                        }
+                    }
+
+                    i += Vector256<byte>.Count;
+                }
+            }
+            else if (Vector128.IsHardwareAccelerated && searchSpan.Length >= Vector128<byte>.Count)
+            {
+                var quoteVec = Vector128.Create((byte)'\"');
+                var newlineVec = Vector128.Create((byte)'\n');
+                var simdLimit = searchSpan.Length - Vector128<byte>.Count;
+
+                while (i <= simdLimit)
+                {
+                    var current = Vector128.LoadUnsafe(ref spanRef, (nuint)i);
+                    var matchQuote = Vector128.Equals(current, quoteVec);
+                    var matchNewline = Vector128.Equals(current, newlineVec);
+                    var combinedMatches = Vector128.BitwiseOr(matchQuote, matchNewline);
+
+                    if (combinedMatches != Vector128<byte>.Zero)
+                    {
+                        var mask = combinedMatches.ExtractMostSignificantBits();
+
+                        while (mask != 0)
+                        {
+                            var bitPos = BitOperations.TrailingZeroCount(mask);
+                            var absolutePos = i + bitPos;
+                            var hitChar = searchSpan[absolutePos];
+
+                            if (hitChar == (byte)'\"')
+                            {
+                                _isInsideQuote = !_isInsideQuote;
+                            }
+                            else if (hitChar == (byte)'\n' && !_isInsideQuote)
+                            {
+                                return FinalizeRow(startOffset, absolutePos);
+                            }
+
+                            mask &= mask - 1;
+                        }
+                    }
+
+                    i += Vector128<byte>.Count;
+                }
+            }
+
+            for (; i < searchSpan.Length; i++)
             {
                 var b = searchSpan[i];
-
                 if (b == (byte)'\"')
                 {
                     _isInsideQuote = !_isInsideQuote;
                 }
                 else if (b == (byte)'\n' && !_isInsideQuote)
                 {
-                    var absoluteNewlineIdx = _bufferOffset + i;
-                    var length = absoluteNewlineIdx - startOffset;
-
-                    if (length > 0 && _buffer[startOffset + length - 1] == (byte)'\r')
-                        length--;
-
-                    _currentLine = _buffer.AsMemory(startOffset, length);
-                    _bufferOffset = absoluteNewlineIdx + 1;
-                    return true;
+                    return FinalizeRow(startOffset, i);
                 }
             }
 
@@ -96,7 +160,6 @@ public partial class Utf8DelimitedReader(Stream stream, byte columnSeparator, in
             var remaining = _bufferCount - startOffset;
             if (remaining >= _buffer.Length)
             {
-                // double buffer size if it doesn't fit
                 var newSize = _buffer.Length * 2;
                 var newBuffer = ArrayPool<byte>.Shared.Rent(newSize);
 
@@ -124,6 +187,19 @@ public partial class Utf8DelimitedReader(Stream stream, byte columnSeparator, in
                 _bufferCount = remaining + read;
             }
         }
+    }
+
+    private bool FinalizeRow(int startOffset, int newlinePos)
+    {
+        var absoluteNewlineIdx = _bufferOffset + newlinePos;
+        var length = absoluteNewlineIdx - startOffset;
+
+        if (length > 0 && _buffer![startOffset + length - 1] == (byte)'\r')
+            length--;
+
+        _currentLine = _buffer.AsMemory(startOffset, length);
+        _bufferOffset = absoluteNewlineIdx + 1;
+        return true;
     }
 }
 

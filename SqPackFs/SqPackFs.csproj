@@ -6,9 +6,16 @@
     <Nullable>enable</Nullable>
     <UseWinUI>true</UseWinUI>
     <WindowsPackageType>None</WindowsPackageType>
+    <DefineConstants>$(DefineConstants);AUTOCTOR_EMBED_ATTRIBUTES</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="AutoCtor" Version="3.0.0" PrivateAssets="all" ExcludeAssets="compile;runtime" />
+    <PackageReference Include="Injectio" Version="6.1.0" PrivateAssets="all" ExcludeAssets="compile;runtime" />
+    <PackageReference Include="PropertyChanged.SourceGenerator" Version="1.1.2" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.8" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.8" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.8" />
     <PackageReference Include="Microsoft.UI.Reactor" Version="0.1.0-preview.1" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.0.1" />
     <PackageReference Include="Lumina" Version="7.6.0" />
