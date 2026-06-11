@@ -25,7 +25,7 @@ jobs:
           submodules: true
 
       - name: Install WinFSP
-        run: choco install winfsp -y
+        run: choco install winfsp -y --pre
 
       - name: Restore dependencies
         run: dotnet restore --locked-mode
