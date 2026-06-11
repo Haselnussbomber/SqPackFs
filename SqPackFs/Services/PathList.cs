@@ -15,7 +15,7 @@ public partial class PathList : IDisposable
     private readonly ILogger<PathList> _logger;
 
     private readonly HttpClient _httpClient = new();
-    private readonly Dictionary<SqHash, string> _files = [];
+    private readonly Dictionary<SqHash, SqFileNode> _nodes = [];
     private readonly Lock _processLock = new();
 
     [Notify(Setter.Private)] private PathListStatus _status;
@@ -23,7 +23,7 @@ public partial class PathList : IDisposable
     [Notify(Setter.Private)] private int _totalCount;
     [Notify(Setter.Private)] private double _loadProgress;
 
-    private ILookup<SqFolderHash, string>? _folderFilePathIndex;
+    private ILookup<SqFolderHash, SqFileNode>? _nodesIndex;
 
     [AutoPostConstruct]
     private void Initialize()
@@ -66,16 +66,16 @@ public partial class PathList : IDisposable
         }
     }
 
-    public IEnumerable<string> GetFilesInFolder(string path)
+    public IEnumerable<SqFileNode> GetNodesInFolder(string path)
     {
         SqFolderHash folderHash = Crc32.Get(path.ToLower());
-        return _folderFilePathIndex?[folderHash] ?? [];
+        return _nodesIndex?[folderHash] ?? [];
     }
 
     private void Clear()
     {
-        _files.Clear();
-        _folderFilePathIndex = null;
+        _nodes.Clear();
+        _nodesIndex = null;
         Count = 0;
         LoadProgress = 0;
         Status = PathListStatus.NotLoaded;
@@ -116,7 +116,7 @@ public partial class PathList : IDisposable
         Count = 0;
         TotalCount = FileUtils.CountLines(PathListCachePath);
 
-        _files.EnsureCapacity(_totalCount);
+        _nodes.EnsureCapacity(_totalCount);
 
         reader.ReadNextRow(); // ship header
 
@@ -146,7 +146,7 @@ public partial class PathList : IDisposable
                 File = filehash,
             };
 
-            _files[hash] = path;
+            _nodes[hash] = new SqFileNode(path, hash);
 
             if (++linesRead % 10000 == 0 && totalBytes > 0)
             {
@@ -155,7 +155,29 @@ public partial class PathList : IDisposable
             }
         }
 
-        _folderFilePathIndex = _files.ToLookup(kvp => kvp.Key.Folder, kvp => kvp.Value);
+        void addPath(string path)
+        {
+            var hash = new SqHash(path);
+            _nodes[hash] = new SqFileNode(path, hash);
+        }
+
+        addPath("common");
+        addPath("bgcommon");
+        addPath("bg");
+        addPath("cut");
+        addPath("chara");
+        addPath("shader");
+        addPath("ui");
+        addPath("sound");
+        addPath("vfx");
+        addPath("ui_script");
+        addPath("exd");
+        addPath("game_script");
+        addPath("music");
+
+        // TODO: build parent folder nodes!!
+
+        _nodesIndex = _nodes.ToLookup(kvp => kvp.Key.Folder, kvp => kvp.Value);
 
         Count = linesRead;
 
