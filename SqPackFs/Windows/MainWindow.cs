@@ -15,7 +15,7 @@ public class MainWindow : Component
         return VStack(
             Component<TrayIcon>(),
 
-            Heading("SqPackFs")
+            Heading("SqPackFS")
                 .Margin(bottom: 16),
 
             TextBlock(gameDataProvider.LastException?.ToString() ?? string.Empty)

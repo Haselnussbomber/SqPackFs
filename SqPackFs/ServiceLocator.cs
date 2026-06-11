@@ -12,6 +12,7 @@ public static class ServiceLocator
             .AddLogging(builder =>
             {
                 builder.ClearProviders();
+                builder.SetMinimumLevel(LogLevel.Trace);
                 builder.AddDebug();
             })
             .AddSqPackFs()

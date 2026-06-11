@@ -12,7 +12,7 @@ public partial class GameDataProvider
     [AutoPostConstruct]
     private void Initialize()
     {
-        GamePath = @"C:\Program Files (x86)\SquareEnix\FINAL FANTASY XIV - A Realm Reborn\game\sqpack"; // TODO: auto-detect
+        SetGamePath(@"C:\Program Files (x86)\SquareEnix\FINAL FANTASY XIV - A Realm Reborn\game\sqpack"); // TODO: auto-detect
     }
 
     public void Dispose()
@@ -42,6 +42,7 @@ public partial class GameDataProvider
             GameData?.Dispose();
             GameData = null;
             GC.Collect();
+            GamePath = path;
             GameData = new GameData(path);
         }
         catch (Exception ex)

@@ -9,6 +9,7 @@ public partial class FileSystemService : IDisposable
     private readonly SqPackFileSystem _filesystem;
 
     private FileSystemHost _host;
+    private Task? _task;
 
     [AutoPostConstruct]
     private void Initialize()
@@ -18,8 +19,14 @@ public partial class FileSystemService : IDisposable
             Prefix = @"\ffxiv\sqpack",
             FileSystemName = "SqPackFs",
         };
-        
-        Task.Run(() =>
+    }
+
+    public void Mount()
+    {
+        if (_task != null)
+            Unmount();
+
+        _task = Task.Run(() =>
         {
             _logger.LogInformation("Mounting X:");
 
@@ -27,13 +34,20 @@ public partial class FileSystemService : IDisposable
             {
                 throw new Exception("Unable to mount to X:");
             }
+
+            _task = null;
         });
+    }
+
+    public void Unmount()
+    {
+        _logger.LogInformation("Unmounting X:");
+        _host.Unmount();
     }
 
     public void Dispose()
     {
-        _logger.LogInformation("Unmounting X:");
-        _host.Unmount();
+        Unmount();
         _host.Dispose();
     }
 }

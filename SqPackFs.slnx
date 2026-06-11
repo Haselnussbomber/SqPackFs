@@ -1,3 +1,4 @@
 <Solution>
+  <Project Path="ResLogger2.Common/src/ResLogger2.Common.csproj" />
   <Project Path="SqPackFs/SqPackFs.csproj" />
 </Solution>

@@ -1,24 +1,38 @@
+using System.Diagnostics;
 using System.Text;
 
 namespace SqPackFs.Utils;
 
 public static class HashUtils
 {
-    public static (uint Folder, uint File) GetHash(string path)
+    public static (uint Folder, uint File) GetHash(ReadOnlySpan<char> path)
     {
-        path = path.ToLower();
-        var bytes = Encoding.UTF8.GetBytes(path); // `char` is utf16 lol
-        var folder = bytes.AsSpan(0, path.LastIndexOf('/'));
-        var file = bytes.AsSpan(path.LastIndexOf('/') + 1);
+        if (path.IsEmpty)
+        {
+            return (uint.MaxValue, 0); // root
+        }
 
-        var folderHash = Lumina.Misc.Crc32.Get(folder);
-        var fileHash = Lumina.Misc.Crc32.Get(file);
+        Debug.Assert(path.Length < 260); // MAX_PATH
+
+        Span<char> lowerPath = stackalloc char[260];
+        Span<byte> byteBuffer = stackalloc byte[520];
+
+        lowerPath = lowerPath[..path.Length];
+        path.ToLowerInvariant(lowerPath);
+
+        var lastSlash = lowerPath.LastIndexOf('/');
+        var bytes = byteBuffer[..Encoding.UTF8.GetBytes(lowerPath, byteBuffer)];
+
+        if (lastSlash == -1) // no separator
+        {
+            var hash = Lumina.Misc.Crc32.Get(bytes);
+            return (hash, 0);
+        }
+
+        var byteCount = Encoding.UTF8.GetByteCount(lowerPath[..lastSlash]);
+        var folderHash = Lumina.Misc.Crc32.Get(bytes[..byteCount]);
+        var fileHash = Lumina.Misc.Crc32.Get(bytes[(byteCount + 1)..]);
+
         return (folderHash, fileHash);
-    }
-
-    public static ulong GetFullHash(string path)
-    {
-        var (folder, file) = GetHash(path);
-        return ((ulong)folder << 32) | file;
     }
 }

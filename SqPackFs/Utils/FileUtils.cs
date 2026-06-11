@@ -1,3 +1,5 @@
+using System.IO.Compression;
+
 namespace SqPackFs.Utils;
 
 public static class FileUtils
@@ -11,9 +13,10 @@ public static class FileUtils
         var lineCount = 0;
 
         using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: buffer.Length);
+        using var gzip = new GZipStream(stream, CompressionMode.Decompress);
 
         int bytesRead;
-        while ((bytesRead = stream.Read(buffer)) > 0)
+        while ((bytesRead = gzip.Read(buffer)) > 0)
             lineCount += buffer[..bytesRead].Count((byte)'\n');
 
         return lineCount;

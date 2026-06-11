@@ -6,25 +6,30 @@ namespace SqPackFs.Models;
 public struct SqHash : IEquatable<SqHash>
 {
     [FieldOffset(0x00)] public ulong Combined;
-    [FieldOffset(0x00)] public SqFolderHash Folder;
-    [FieldOffset(0x04)] public SqFileHash File;
+    [FieldOffset(0x00)] public SqFileHash File;
+    [FieldOffset(0x04)] public SqFolderHash Folder;
     [FieldOffset(0x08)] public SqFullHash Full;
 
-    public SqHash(string path)
+    public SqHash(ReadOnlySpan<char> path, bool isFolder = false)
     {
-        // TODO: check if this is correct
-
-        if (path.Contains('/'))
+        if (isFolder)
+        {
+            Span<char> lowerPath = stackalloc char[256];
+            lowerPath = lowerPath[..path.Length];
+            path.ToLowerInvariant(lowerPath);
+            var hash = Lumina.Misc.Crc32.Get(lowerPath);
+            Folder = hash;
+            Full = hash;
+        }
+        else
         {
             (File, Folder) = HashUtils.GetHash(path);
             Full = Lumina.Misc.Crc32.Get(path);
         }
-        else
-        {
-            var hash = Lumina.Misc.Crc32.Get(path);
-            Folder = hash;
-            Full = hash;
-        }
+    }
+
+    public SqHash(string path, bool isFolder = false) : this(path.AsSpan(), isFolder)
+    {
     }
 
     public bool Equals(SqHash other) => Combined == other.Combined && Full == other.Full;
