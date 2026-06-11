@@ -1,0 +1,65 @@
+name: Build
+
+on:
+  push:
+    paths-ignore:
+      - .editorconfig
+      - .gitattributes
+      - .github/**
+      - .gitignore
+      - CHANGELOG.md
+      - LICENSE
+      - README.md
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build
+    runs-on: windows-latest
+    env:
+      NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+
+      - name: Install WinFSP
+        run: choco install winfsp -y
+
+      - name: Restore dependencies
+        run: dotnet restore --locked-mode
+
+      - name: Build
+        run: dotnet build --no-restore -c Release -clp:NoSummary
+
+      - name: Upload Build Artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v5
+        with:
+          path: bin/SqPackFs/*
+
+  release:
+    name: Release
+    needs: build
+    if: success() && startsWith(github.ref, 'refs/tags/v') && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download Build Artifact
+        uses: actions/download-artifact@v7
+        with:
+          path: artifact
+
+      - name: Extract release notes
+        id: extract-release-notes
+        uses: ffurrer2/extract-release-notes@v3
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: SqPackFs ${{ github.ref_name }}
+          body: ${{ steps.extract-release-notes.outputs.release_notes }}
+          files: artifact/*
