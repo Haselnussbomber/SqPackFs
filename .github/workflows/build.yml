@@ -28,7 +28,7 @@ jobs:
         run: choco install winfsp -y --pre
 
       - name: Restore dependencies
-        run: dotnet restore --locked-mode
+        run: dotnet restore --locked-mode --force-evaluate
 
       - name: Build
         run: dotnet build --no-restore -c Release -clp:NoSummary
