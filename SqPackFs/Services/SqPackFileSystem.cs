@@ -2,11 +2,10 @@ using Fsp;
 using Fsp.Interop;
 using Lumina.Misc;
 using SqPackFs.Models;
-using SqPackFs.Services;
 using SqPackFs.Utils;
 using FileInfo = Fsp.Interop.FileInfo;
 
-namespace SqPackFs;
+namespace SqPackFs.Services;
 
 [RegisterSingleton, AutoConstruct]
 public partial class SqPackFileSystem : FileSystemBase

@@ -1,5 +1,6 @@
 using Microsoft.UI.Reactor;
 using SqPackFs;
+using SqPackFs.Services;
 using SqPackFs.Windows;
 
 ServiceLocator.GetService<FileSystemService>();

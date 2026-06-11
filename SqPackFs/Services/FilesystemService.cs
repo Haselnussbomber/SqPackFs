@@ -1,6 +1,6 @@
 using Fsp;
 
-namespace SqPackFs;
+namespace SqPackFs.Services;
 
 [RegisterSingleton, AutoConstruct]
 public partial class FileSystemService : IDisposable
