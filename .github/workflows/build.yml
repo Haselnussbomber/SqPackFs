@@ -37,7 +37,7 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v5
         with:
-          path: bin/SqPackFs/*
+          path: bin/*
 
   release:
     name: Release
