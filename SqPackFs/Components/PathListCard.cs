@@ -28,23 +28,29 @@ public class PathListCard : Component
                             .Margin(bottom: 12),
                         Progress(pathlist.LoadProgress * 100)
                             .IsVisible(pathlist.Status == PathListStatus.Loading)
+                            .Margin(bottom: 12)
                     ),
                     PathListStatus.Downloading => VStack(
                         TextBlock("Downloading path list...")
                             .Margin(bottom: 12),
                         ProgressIndeterminate()
                             .IsVisible(pathlist.Status == PathListStatus.Downloading)
+                            .Margin(bottom: 12)
                     ),
                     _ => TextBlock(pathlist.Status.ToString())
                 },
 
                 HStack(
-                    Button("Download", () => Task.Run(() => pathlist.LoadPathList(true)).ConfigureAwait(false))
-                        .IsEnabled(pathlist.Status is not (PathListStatus.Loading or PathListStatus.Downloading)),
+                    Button("Download", () => Task.Run(() => pathlist.LoadPathList(true)).ConfigureAwait(false)),
+
+                    Button("Load", () => Task.Run(() => pathlist.LoadPathList(false)).ConfigureAwait(false))
+                        .IsVisible(pathlist.Status is not (PathListStatus.Loaded or PathListStatus.Loading or PathListStatus.Downloading) && pathlist.IsCached),
 
                     Button("Reload", () => Task.Run(() => pathlist.LoadPathList(false)).ConfigureAwait(false))
-                        .IsEnabled(pathlist.Status is not (PathListStatus.Loading or PathListStatus.Downloading))
+                        .IsVisible(pathlist.Status is PathListStatus.Loaded && pathlist.IsCached)
                 )
+                    .IsVisible(pathlist.Status is not (PathListStatus.Loading or PathListStatus.Downloading))
+                    .Margin(top: 12)
             )
         );
     }

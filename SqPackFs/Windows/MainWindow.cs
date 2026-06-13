@@ -22,7 +22,8 @@ public class MainWindow : Component
                 .Margin(bottom: 16),
 
             Component<SettingsCard>(),
-            Component<PathListCard>()
+            Component<PathListCard>(),
+            Component<FsCard>()
         ).Padding(20);
     }
 }

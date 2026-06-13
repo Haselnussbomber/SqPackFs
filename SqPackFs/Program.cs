@@ -47,11 +47,13 @@ ReactorApp.Run(ctx =>
     // TODO: why is this so big?
     tray.RightClick += (_, _) => tray.ShowFlyout(
         VStack(
-            Button("Open", () => {
+            Button("Open", () =>
+            {
                 toggleMainWindow.Invoke();
                 tray.HideFlyout();
             }),
-            Button("Exit", () => {
+            Button("Exit", () =>
+            {
                 tray.Close();
                 ReactorApp.FindWindow("main")?.Close();
                 ServiceLocator.Dispose();

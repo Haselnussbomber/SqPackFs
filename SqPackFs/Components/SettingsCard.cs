@@ -30,8 +30,8 @@ public class SettingsCard : Component
                     .AutomationName("GamePath")
                     .IsEnabled(pathlist.Status is not (PathListStatus.Downloading or PathListStatus.Loading)),
                 Button("Select sqpack directory", selectDirectoryCallback)
+                    .IsEnabled(pathlist.Status is not (PathListStatus.Downloading or PathListStatus.Loading))
             )
-        )
-        .Margin(bottom: 16);
+        );
     }
 }

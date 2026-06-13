@@ -22,6 +22,7 @@ public partial class PathList : IDisposable
     private readonly Dictionary<SqFolderHash, HashSet<SqNode>> _folderContents = [];
     private readonly Lock _processLock = new();
 
+    [Notify(Setter.Private)] private bool _isCached;
     [Notify(Setter.Private)] private PathListStatus _status;
     [Notify(Setter.Private)] private int _count;
     [Notify(Setter.Private)] private int _totalCount;
@@ -31,7 +32,7 @@ public partial class PathList : IDisposable
     [AutoPostConstruct]
     private void Initialize()
     {
-        // Task.Run(() => LoadPathList(!File.Exists(PathListCachePath))).ConfigureAwait(false);
+        IsCached = File.Exists(PathListCachePath);
     }
 
     public void Dispose()
@@ -63,8 +64,6 @@ public partial class PathList : IDisposable
             Status = PathListStatus.Loaded;
 
             _logger.LogInformation("Loaded path lists in {elapsed}", stopwatch.Elapsed);
-
-            ServiceLocator.GetService<FileSystemService>().Mount();
         }
         catch (Exception e)
         {
@@ -141,8 +140,9 @@ public partial class PathList : IDisposable
         await using var writer = new StreamWriter(PathListCachePath);
         await reader.BaseStream.CopyToAsync(writer.BaseStream);
 
-        _logger.LogInformation("Downloaded paths to {path}", PathListCachePath);
+        _logger.LogInformation("Downloaded pathlist to {path}", PathListCachePath);
 
+        IsCached = true;
         Status = PathListStatus.Downloaded;
     }
 

@@ -7,7 +7,7 @@ public partial class GameDataProvider
 {
     [Notify(Setter.Private)] private Exception? _lastException;
     [Notify(Setter.Private)] private GameData? _gameData;
-    [Notify(Setter.Private)] private string _gamePath;
+    [Notify(Setter.Private)] private string _gamePath; // TODO: make persistent
 
     [AutoPostConstruct]
     private void Initialize()

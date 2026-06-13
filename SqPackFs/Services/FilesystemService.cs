@@ -11,6 +11,11 @@ public partial class FileSystemService : IDisposable
     private FileSystemHost _host;
     private Task? _task;
 
+    [Notify(Setter.Private)] private bool _isMounted;
+    [Notify(Setter.Private)] private string[] _driveLetters = GetDriveLetters();
+
+    [Notify] private string _driveLetter; // TODO: make persistent
+
     [AutoPostConstruct]
     private void Initialize()
     {
@@ -19,6 +24,8 @@ public partial class FileSystemService : IDisposable
             Prefix = @"\ffxiv\sqpack",
             FileSystemName = "SqPackFs",
         };
+
+        DriveLetter = _driveLetters.Last();
     }
 
     public void Mount()
@@ -28,11 +35,14 @@ public partial class FileSystemService : IDisposable
 
         _task = Task.Run(() =>
         {
-            _logger.LogInformation("Mounting X:");
+            _logger.LogInformation("Mounting {driveLetter}", _driveLetter);
 
-            if (_host.Mount("X:", null, false, 0) != FileSystemBase.STATUS_SUCCESS)
+            IsMounted = true;
+
+            if (_host.Mount(_driveLetter, null, false, 0) != FileSystemBase.STATUS_SUCCESS)
             {
-                throw new Exception("Unable to mount to X:");
+                IsMounted = false;
+                throw new Exception("Unable to mount to " + _driveLetter);
             }
 
             _task = null;
@@ -41,13 +51,21 @@ public partial class FileSystemService : IDisposable
 
     public void Unmount()
     {
-        _logger.LogInformation("Unmounting X:");
+        _logger.LogInformation("Unmounting {driveLetter}", _driveLetter);
         _host.Unmount();
+        IsMounted = false;
     }
 
     public void Dispose()
     {
         Unmount();
         _host.Dispose();
+    }
+
+    private static string[] GetDriveLetters()
+    {
+        return Enumerable.Range('A', 26).Select(c => $"{(char)c}:")
+            .Except(DriveInfo.GetDrives().Select(d => $"{char.ToUpper(d.Name[0])}:"))
+            .ToArray();
     }
 }
