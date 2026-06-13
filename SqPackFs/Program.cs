@@ -1,17 +1,14 @@
 using Microsoft.UI.Reactor;
 using SqPackFs;
-using SqPackFs.Services;
 using SqPackFs.Utils;
 using SqPackFs.Windows;
 using static Microsoft.UI.Reactor.Factories;
 
-ServiceLocator.GetService<FileSystemService>();
+ReactorApp.AppLogger = ServiceLocator.GetService<ILoggerProvider>().CreateLogger(nameof(ReactorApp));
+ReactorApp.ShutdownPolicy = ShutdownPolicy.Explicit;
 
 ReactorApp.Run(ctx =>
 {
-    // TODO: only works when you open the tray flyout once?
-    ReactorApp.ShutdownPolicy = ShutdownPolicy.Explicit;
-
     var icon = WindowIcon.FromPath("Assets/TrayIcon.ico");
 
     var tray = ReactorApp.OpenTrayIcon(new TrayIconSpec(
@@ -50,8 +47,16 @@ ReactorApp.Run(ctx =>
     // TODO: why is this so big?
     tray.RightClick += (_, _) => tray.ShowFlyout(
         VStack(
-            Button("Open", () => { toggleMainWindow.Invoke(); tray.HideFlyout(); }),
-            Button("Exit", () => ReactorApp.Exit())));
+            Button("Open", () => {
+                toggleMainWindow.Invoke();
+                tray.HideFlyout();
+            }),
+            Button("Exit", () => {
+                tray.Close();
+                ReactorApp.FindWindow("main")?.Close();
+                ServiceLocator.Dispose();
+                Task.Delay(50).ContinueWith(_ => { ReactorApp.UIDispatcher?.TryEnqueue(() => ReactorApp.Exit()); }).ConfigureAwait(false);
+            })));
 
     // TODO: add cli option to not show on startup
     toggleMainWindow.Invoke();
