@@ -12,6 +12,7 @@
     <WindowsPackageType>None</WindowsPackageType>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <DefineConstants>$(DefineConstants);AUTOCTOR_EMBED_ATTRIBUTES</DefineConstants>
+    <NoWarn>$(NoWarn);CsWinRT1028</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

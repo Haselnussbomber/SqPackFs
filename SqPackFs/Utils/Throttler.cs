@@ -3,7 +3,7 @@ using Microsoft.UI.Reactor;
 
 namespace SqPackFs.Utils;
 
-public partial class Throttler(TimeSpan cooldown, DispatcherQueueHandler action) : IDisposable
+public class Throttler(TimeSpan cooldown, DispatcherQueueHandler action) : IDisposable
 {
     private readonly Lock _lock = new();
     private bool _isThrottling;

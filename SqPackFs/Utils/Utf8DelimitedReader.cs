@@ -6,10 +6,10 @@ using System.Text;
 
 namespace SqPackFs.Utils;
 
-public partial class Utf8CsvReader(Stream stream, int initialBufferSize = 32 * 1024) : Utf8DelimitedReader(stream, (byte)',', initialBufferSize);
-public partial class Utf8TsvReader(Stream stream, int initialBufferSize = 32 * 1024) : Utf8DelimitedReader(stream, (byte)'\t', initialBufferSize);
+public class Utf8CsvReader(Stream stream, int initialBufferSize = 32 * 1024) : Utf8DelimitedReader(stream, (byte)',', initialBufferSize);
+public class Utf8TsvReader(Stream stream, int initialBufferSize = 32 * 1024) : Utf8DelimitedReader(stream, (byte)'\t', initialBufferSize);
 
-public partial class Utf8DelimitedReader(Stream stream, byte columnSeparator, int initialBufferSize = 32 * 1024) : IDisposable
+public class Utf8DelimitedReader(Stream stream, byte columnSeparator, int initialBufferSize = 32 * 1024) : IDisposable
 {
     private byte[]? _buffer = ArrayPool<byte>.Shared.Rent(initialBufferSize);
     private int _bufferOffset = 0;
