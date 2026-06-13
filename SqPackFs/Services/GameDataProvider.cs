@@ -41,6 +41,7 @@ public partial class GameDataProvider
         {
             GameData?.Dispose();
             GameData = null;
+            LastException = null;
             GC.Collect();
             GamePath = path;
             GameData = new GameData(path);
