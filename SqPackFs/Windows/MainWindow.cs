@@ -13,8 +13,6 @@ public class MainWindow : Component
         var gameDataProvider = UseObservable(UseMemo(ServiceLocator.GetService<GameDataProvider>));
 
         return VStack(
-            Component<TrayIcon>(),
-
             Heading("SqPackFS")
                 .Margin(bottom: 16),
 

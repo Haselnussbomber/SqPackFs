@@ -31,7 +31,7 @@ public partial class PathList : IDisposable
     [AutoPostConstruct]
     private void Initialize()
     {
-        Task.Run(() => LoadPathList(!File.Exists(PathListCachePath))).ConfigureAwait(false);
+        // Task.Run(() => LoadPathList(!File.Exists(PathListCachePath))).ConfigureAwait(false);
     }
 
     public void Dispose()
